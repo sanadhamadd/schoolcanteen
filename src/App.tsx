@@ -50,7 +50,16 @@ export default function App() {
   const [fb, setFb] = useState<Fb>({ dish: null, stage: 'dish' });
   const [welcome, setWelcome] = useState(true);
   const start = () => { countOnce('starts'); setWelcome(false); setTab('scan'); };
-  useEffect(() => { countOnce('opens'); }, []);
+  useEffect(() => {
+    countOnce('opens');
+    // presence: +1 "joins" while the page is visible, +1 "leaves" when it is hidden or closed
+    let here = false;
+    const ping = (k: string) => { try { if (location.search.includes('nocount') || location.hostname === 'localhost') return; fetch(COUNT + k, { keepalive: true }).catch(() => {}); } catch { /* no-op */ } };
+    const sync = () => { const vis = document.visibilityState === 'visible'; if (vis && !here) { here = true; ping('joins'); } else if (!vis && here) { here = false; ping('leaves'); } };
+    const bye = () => { if (here) { here = false; ping('leaves'); } };
+    sync(); document.addEventListener('visibilitychange', sync); window.addEventListener('pagehide', bye);
+    return () => { document.removeEventListener('visibilitychange', sync); window.removeEventListener('pagehide', bye); };
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
   const [confetti, setConfetti] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
