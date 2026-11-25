@@ -8,7 +8,7 @@ await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: t
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const click = async (text) => { const ok = await p.evaluate(t => { const el = [...document.querySelectorAll('button')].find(x => x.textContent.trim().includes(t)); if (el) { el.click(); return true; } return false; }, text); if (!ok) errs.push('missing button: ' + text); await wait(500); };
 const shot = async (n) => { await wait(700); await p.screenshot({ path: out + n + '.png' }); };
-await p.goto(URL, { waitUntil: 'networkidle0' }); await p.evaluate(() => localStorage.clear()); await p.reload({ waitUntil: 'networkidle0' });
+await p.goto(URL + '?nocount', { waitUntil: 'networkidle0' }); await p.evaluate(() => localStorage.clear()); await p.reload({ waitUntil: 'networkidle0' });
 await wait(600); await shot('00-welcome');
 { const r = await p.evaluate(() => { const t = document.querySelector('.s-thumb').getBoundingClientRect(), k = document.querySelector('.slider').getBoundingClientRect(); return { x: t.x + t.width / 2, y: t.y + t.height / 2, end: k.right - 20 }; });
   await p.mouse.move(r.x, r.y); await p.mouse.down(); await p.mouse.move(r.x + 120, r.y, { steps: 8 }); await p.screenshot({ path: out + '00b-welcome-sliding.png' });

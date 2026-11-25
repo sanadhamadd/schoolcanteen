@@ -15,6 +15,15 @@ interface Saved { loves: number; votes: { dish: string; reason: ReasonId }[]; fo
 const KEY = 'schoolcanteen-demo-v1';
 const empty = (): Saved => ({ loves: 0, votes: [], focus: {}, sent: {}, steps: {} });
 const load = (): Saved => { try { return { ...empty(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return empty(); } };
+// Anonymous visit counter: one +1 per device, no personal data. Failures are ignored so the demo never depends on it.
+const COUNT = 'https://countapi.mileshilliard.com/api/v1/hit/scdemo_k7q2m9_';
+const countOnce = (what: 'opens' | 'starts') => {
+  try {
+    if (location.search.includes('nocount') || location.hostname === 'localhost' || localStorage.getItem('sc-counted-' + what)) return;
+    localStorage.setItem('sc-counted-' + what, '1');
+    fetch(COUNT + what, { keepalive: true }).catch(() => {});
+  } catch { /* no-op */ }
+};
 const buzz = (ms = 12) => { try { navigator.vibrate?.(ms); } catch { /* no-op */ } };
 
 function useCount(target: number, dur = 900, from?: number) {
@@ -40,7 +49,8 @@ export default function App() {
   const [sheet, setSheet] = useState(false);
   const [fb, setFb] = useState<Fb>({ dish: null, stage: 'dish' });
   const [welcome, setWelcome] = useState(true);
-  const start = () => { setWelcome(false); setTab('scan'); };
+  const start = () => { countOnce('starts'); setWelcome(false); setTab('scan'); };
+  useEffect(() => { countOnce('opens'); }, []);
   const [toast, setToast] = useState<string | null>(null);
   const [confetti, setConfetti] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
