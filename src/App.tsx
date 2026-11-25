@@ -39,8 +39,8 @@ export default function App() {
   const [recipeDish, setRecipeDish] = useState('lentil');
   const [sheet, setSheet] = useState(false);
   const [fb, setFb] = useState<Fb>({ dish: null, stage: 'dish' });
-  const [welcome, setWelcome] = useState(() => sessionStorage.getItem('sc-started') !== '1');
-  const start = () => { sessionStorage.setItem('sc-started', '1'); setWelcome(false); setTab('scan'); };
+  const [welcome, setWelcome] = useState(true);
+  const start = () => { setWelcome(false); setTab('scan'); };
   const [toast, setToast] = useState<string | null>(null);
   const [confetti, setConfetti] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -82,7 +82,7 @@ export default function App() {
       {toast && <div className="toast" role="status">{toast}</div>}
       {confetti > 0 && <Confetti key={confetti} />}
       {welcome && <Welcome onStart={start} />}
-      {sheet && <Sheet c={ctx} close={() => setSheet(false)} reset={() => { localStorage.removeItem(KEY); setSaved(empty()); setPhase('idle'); setFb({ dish: null, stage: 'dish' }); setTrayId('tue'); setDetail(null); setRecipeDish('lentil'); setTab('scan'); setSheet(false); sessionStorage.removeItem('sc-started'); setWelcome(true); }} />}
+      {sheet && <Sheet c={ctx} close={() => setSheet(false)} reset={() => { localStorage.removeItem(KEY); setSaved(empty()); setPhase('idle'); setFb({ dish: null, stage: 'dish' }); setTrayId('tue'); setDetail(null); setRecipeDish('lentil'); setTab('scan'); setSheet(false); setWelcome(true); }} />}
     </div>
   );
   return <Stage caption={caption(tab, phase, detail, saved, recipeDish, focusFor, fb)}>{app}</Stage>;

@@ -26,6 +26,6 @@ await click('Fix the'); await wait(300); await p.screenshot({ path: out + '09-ai
 await click('Approve'); await wait(800); await shot('11-menu-updated');
 await p.evaluate(() => document.querySelector('.scroll').scrollTo(0, 99999)); await shot('12-verify');
 await click('SC'); await shot('13-about');
-await p.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 }); await p.reload({ waitUntil: 'networkidle0' }); await shot('14-desktop');
+await p.reload({ waitUntil: 'networkidle0' }); if (!(await p.evaluate(() => !!document.querySelector('.welcome')))) errs.push('welcome missing after refresh'); await p.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 }); await wait(500); await shot('14-desktop');
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no errors');
 await b.close();
