@@ -1,0 +1,27 @@
+// Walks the main flows on a phone viewport and saves screenshots. Usage: node scripts/shots.mjs <url>
+import puppeteer from 'puppeteer-core';
+const URL = process.argv[2], out = '../screenshots/';
+const b = await puppeteer.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
+const p = await b.newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => m.type() === 'error' && errs.push(m.text()));
+await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const click = async (text) => { const ok = await p.evaluate(t => { const el = [...document.querySelectorAll('button')].find(x => x.textContent.trim().includes(t)); if (el) { el.click(); return true; } return false; }, text); if (!ok) errs.push('missing button: ' + text); await wait(500); };
+const shot = async (n) => { await wait(700); await p.screenshot({ path: out + n + '.png' }); };
+await p.goto(URL, { waitUntil: 'networkidle0' }); await p.evaluate(() => localStorage.clear()); await p.reload({ waitUntil: 'networkidle0' });
+await shot('01-scan-idle');
+await click('Scan a demo tray'); await wait(900); await p.screenshot({ path: out + '02-scanning.png' });
+await wait(2800); await shot('03-results');
+await click('Ask the pupil why'); await shot('04-feedback');
+await click('Texture'); await wait(900); await shot('05-thanks');
+await click('See what the kitchen sees'); await shot('06-dish-detail');
+await click('This week'); await shot('07-insights');
+await p.evaluate(() => document.querySelector('.scroll').scrollTo(0, 900)); await shot('08-insights-more');
+await click('Fix this recipe').catch(() => {}); 
+await p.evaluate(() => [...document.querySelectorAll('.tab')][2].click()); await shot('09-recipes');
+await click('Send to the kitchen'); await wait(800); await shot('10-verify');
+await p.evaluate(() => document.querySelector('.scroll').scrollTo(0, 99999)); await shot('11-verify-compare');
+await click('SC'); await shot('12-about');
+await p.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 }); await p.reload({ waitUntil: 'networkidle0' }); await shot('13-desktop');
+console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no errors');
+await b.close();
