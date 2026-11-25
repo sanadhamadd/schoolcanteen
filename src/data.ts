@@ -126,6 +126,7 @@ export const RECIPES: Record<string, Record<ReasonId, Recipe>> = {
       ['Flake baked hake', 'Fill two small wheat tortillas', 'Add a crunchy cabbage slaw'], 72, 'tacos'),
   },
 };
+export const EMOJI: Record<string, string> = { lentil: '🍲', chickpea: '🍛', hake: '🐟', chicken: '🍗', pasta: '🍝', salad: '🥗', tomato: '🍅', beans: '🫛', bread: '🍞', orange: '🍊', apple: '🍎', yogurt: '🥛' };
 export const DEFAULT_FOCUS: Record<string, ReasonId> = { lentil: 'texture', chickpea: 'portion', hake: 'taste' };
 export const FIXABLE = ['lentil', 'chickpea', 'hake'];
 export const VERIFY_RAMP = [0, 0.79, 0.94, 1];

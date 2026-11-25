@@ -1,16 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
-  CLASS_WEEK_BASE, DEFAULT_FOCUS, DISHES, FIXABLE, PUPILS, QUOTES, REASONS, REASON_BASE, REASON_ORDER, RECIPES, TRAYS, TREND, VERIFY_RAMP, WEEK,
+  CLASS_WEEK_BASE, DEFAULT_FOCUS, DISHES, EMOJI, FIXABLE, PUPILS, QUOTES, REASONS, REASON_BASE, REASON_ORDER, RECIPES, TRAYS, TREND, VERIFY_RAMP, WEEK,
   eatenColor, fmt, leftColor, lossKg, trayLeft, type ReasonId,
 } from './data';
-import { DishArt, IconArrow, IconBack, IconCheck, IconInsights, IconRecipes, IconScan, Logo, TrayArt } from './art';
+import { DishArt, IconArrow, IconBack, IconCheck, IconFeedback, IconInsights, IconRecipes, IconScan, Logo, TrayArt } from './art';
 
 /* ---------------- state ---------------- */
-type Tab = 'scan' | 'insights' | 'recipes';
-type Phase = 'idle' | 'scanning' | 'results' | 'ask' | 'thanks';
-interface Saved { votes: { dish: string; reason: ReasonId }[]; focus: Record<string, ReasonId>; sent: Record<string, ReasonId>; steps: Record<string, boolean> }
+type Tab = 'scan' | 'feedback' | 'insights' | 'recipes';
+type Phase = 'idle' | 'scanning' | 'results';
+type Mood = 'loved' | 'ok' | 'disliked';
+interface Fb { dish: string | null; stage: 'dish' | 'mood' | 'reason' | 'thanks'; mood?: Mood; reason?: ReasonId }
+interface Saved { loves: number; votes: { dish: string; reason: ReasonId }[]; focus: Record<string, ReasonId>; sent: Record<string, ReasonId>; steps: Record<string, boolean> }
 const KEY = 'schoolcanteen-demo-v1';
-const empty = (): Saved => ({ votes: [], focus: {}, sent: {}, steps: {} });
+const empty = (): Saved => ({ loves: 0, votes: [], focus: {}, sent: {}, steps: {} });
 const load = (): Saved => { try { return { ...empty(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return empty(); } };
 const buzz = (ms = 12) => { try { navigator.vibrate?.(ms); } catch { /* no-op */ } };
 
@@ -35,6 +37,7 @@ export default function App() {
   const [detail, setDetail] = useState<string | null>(null);
   const [recipeDish, setRecipeDish] = useState('lentil');
   const [sheet, setSheet] = useState(false);
+  const [fb, setFb] = useState<Fb>({ dish: null, stage: 'dish' });
   const [toast, setToast] = useState<string | null>(null);
   const [confetti, setConfetti] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -45,12 +48,12 @@ export default function App() {
   const scrollTop = () => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   useLayoutEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [tab, detail]);
 
-  const go = (t: Tab) => { buzz(8); setTab(t); if (t === 'insights') step('report'); if (t === 'recipes') step('recipe'); };
+  const go = (t: Tab) => { buzz(8); setTab(t); if (t === 'insights') step('report'); if (t === 'recipes') step('recipe'); if (t === 'feedback' && fb.stage === 'thanks') setFb({ dish: null, stage: 'dish' }); };
   const showToast = (m: string) => { setToast(m); window.setTimeout(() => setToast(null), 3200); };
   const focusFor = (dish: string): ReasonId => saved.focus[dish] ?? [...saved.votes].reverse().find(v => v.dish === dish)?.reason ?? DEFAULT_FOCUS[dish] ?? 'taste';
 
-  const ctx: Ctx = { saved, update, step, phase, setPhase, trayId, setTrayId, go, setDetail, detail, recipeDish, setRecipeDish, showToast, setConfetti, focusFor, scrollTop, scrollRef };
-  const head = tab === 'scan' ? ['CEIP demo school · Class 4A', 'Tray return'] : tab === 'insights' ? ['Catering nutritionist', 'Insights'] : ['Catering nutritionist', 'Recipe fix'];
+  const ctx: Ctx = { fb, setFb, saved, update, step, phase, setPhase, trayId, setTrayId, go, setDetail, detail, recipeDish, setRecipeDish, showToast, setConfetti, focusFor, scrollTop, scrollRef };
+  const head = { scan: ['Canteen camera · Class 4A', 'Tray return'], feedback: ['Pupil · anonymous', 'How was lunch?'], insights: ['Catering nutritionist', 'Insights'], recipes: ['Catering nutritionist', 'AI recipe fix'] }[tab];
 
   const app = (
     <div className="app">
@@ -59,27 +62,30 @@ export default function App() {
         <div><div className="kicker">{head[0]}</div><h1 className="title">{head[1]}</h1></div>
         <button className="avatar" onClick={() => { buzz(); setSheet(true); }} aria-label="About this demo">SC</button>
       </header>
+      <Stepper tab={tab} saved={saved} sent={!!saved.sent[recipeDish]} go={go} />
       <main className="scroll" ref={scrollRef}>
         <div className="screen" key={tab + (detail ?? '')} data-anim={detail ? 'push' : 'fade'}>
           {tab === 'scan' && <ScanScreen c={ctx} />}
+          {tab === 'feedback' && <FeedbackScreen c={ctx} />}
           {tab === 'insights' && (detail ? <DishDetail c={ctx} dish={detail} /> : <InsightsScreen c={ctx} />)}
           {tab === 'recipes' && <RecipesScreen c={ctx} />}
         </div>
       </main>
       <nav className="tabbar">
-        {([['scan', 'Scan', <IconScan />], ['insights', 'Insights', <IconInsights />], ['recipes', 'Recipes', <IconRecipes />]] as [Tab, string, ReactNode][]).map(([t, l, ic]) => (
+        {([['scan', 'Scan', <IconScan />], ['feedback', 'Feedback', <IconFeedback />], ['insights', 'Insights', <IconInsights />], ['recipes', 'AI Recipes', <IconRecipes />]] as [Tab, string, ReactNode][]).map(([t, l, ic]) => (
           <button key={t} className={'tab' + (tab === t ? ' on' : '')} onClick={() => { if (t === 'insights' && tab === 'insights') setDetail(null); go(t); }}>{ic}<span>{l}</span></button>
         ))}
       </nav>
       {toast && <div className="toast" role="status">{toast}</div>}
       {confetti > 0 && <Confetti key={confetti} />}
-      {sheet && <Sheet c={ctx} close={() => setSheet(false)} reset={() => { localStorage.removeItem(KEY); setSaved(empty()); setPhase('idle'); setTrayId('tue'); setDetail(null); setRecipeDish('lentil'); setTab('scan'); setSheet(false); }} />}
+      {sheet && <Sheet c={ctx} close={() => setSheet(false)} reset={() => { localStorage.removeItem(KEY); setSaved(empty()); setPhase('idle'); setFb({ dish: null, stage: 'dish' }); setTrayId('tue'); setDetail(null); setRecipeDish('lentil'); setTab('scan'); setSheet(false); }} />}
     </div>
   );
-  return <Stage caption={caption(tab, phase, detail, saved, recipeDish, focusFor)}>{app}</Stage>;
+  return <Stage caption={caption(tab, phase, detail, saved, recipeDish, focusFor, fb)}>{app}</Stage>;
 }
 
 interface Ctx {
+  fb: Fb; setFb: (f: Fb) => void;
   saved: Saved; update: (f: (s: Saved) => Saved) => void; step: (k: string) => void;
   phase: Phase; setPhase: (p: Phase) => void; trayId: string; setTrayId: (s: string) => void;
   go: (t: Tab) => void; detail: string | null; setDetail: (d: string | null) => void;
@@ -107,16 +113,25 @@ const Stacked = ({ counts, mine }: { counts: Record<ReasonId, number>; mine?: Re
   </>;
 };
 
+/* ---------------- guide ---------------- */
+const STEPS: [string, string, Tab][] = [['scan', 'Scan', 'scan'], ['why', 'Feedback', 'feedback'], ['report', 'Insights', 'insights'], ['recipe', 'AI fix', 'recipes'], ['verify', 'Verify', 'recipes']];
+function Stepper({ tab, saved, sent, go }: { tab: Tab; saved: Saved; sent: boolean; go: (t: Tab) => void }) {
+  const cur = tab === 'recipes' ? (sent ? 4 : 3) : STEPS.findIndex(x => x[2] === tab);
+  return <div className="stepper">{STEPS.map(([k, l, t], i) => <button key={k} className={(i === cur ? 'cur ' : '') + (saved.steps[k] ? 'ok' : '')} onClick={() => go(t)}>
+    <span className="sn">{saved.steps[k] && i !== cur ? <IconCheck /> : i + 1}</span><span className="sl">{l}</span></button>)}</div>;
+}
+const Hint = ({ who, children }: { who: string; children: ReactNode }) => <div className="hint"><span className="who">{who}</span><p>{children}</p></div>;
+const Next = ({ label, onClick }: { label: string; onClick: () => void }) => <button className="btn next" onClick={onClick}><span><small>Next step</small>{label}</span><IconArrow /></button>;
+const Ai = ({ children = 'AI' }: { children?: ReactNode }) => <span className="ai-badge">✦ {children}</span>;
+
 /* ---------------- 1 · Scan ---------------- */
 function ScanScreen({ c }: { c: Ctx }) {
   const tray = TRAYS.find(t => t.id === c.trayId)!;
   const { phase, setPhase } = c;
   const [sub, setSub] = useState(0);
-  const [picked, setPicked] = useState<ReasonId | null>(null);
   const main = tray.items[0], mainDish = DISHES[main.dish];
   const needsWhy = main.eaten < 50;
   const left = trayLeft(tray);
-  const classCount = CLASS_WEEK_BASE + c.saved.votes.length;
 
   useEffect(() => {
     if (phase !== 'scanning') return;
@@ -125,86 +140,120 @@ function ScanScreen({ c }: { c: Ctx }) {
     return () => t.forEach(clearTimeout);
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const start = () => { buzz(); setPicked(null); c.step('scan'); setPhase('scanning'); c.scrollTop(); };
-  const vote = (r: ReasonId) => {
-    if (picked) return;
-    buzz(25); setPicked(r);
-    c.update(s => ({ ...s, votes: [...s.votes, { dish: main.dish, reason: r }], steps: { ...s.steps, why: true } }));
-    setTimeout(() => { setPhase('thanks'); c.setConfetti(n => n + 1); c.scrollTop(); }, 520);
-  };
-  const status = phase === 'idle' ? ['Waiting for a tray', 'Camera · tray return', 'var(--coral)'] : phase === 'scanning' ? ['Scanning', 'Demo tray', 'var(--yellow)'] : ['Tray scanned', 'Demo tray', 'var(--green-dot)'];
-  const subs = ['Finding each dish…', 'Estimating what was left…', 'Calculating protein, fibre and iron…'];
+  const start = () => { buzz(); c.step('scan'); setPhase('scanning'); c.scrollTop(); };
+  const status = phase === 'idle' ? ['Waiting for a tray', 'Camera · tray return', 'var(--coral)'] : phase === 'scanning' ? ['AI scanning', 'Demo tray', 'var(--yellow)'] : ['Tray scanned', 'Demo tray', 'var(--green-dot)'];
+  const subs = ['AI vision finds each dish', 'Compares what is left with what was served', 'Turns leftovers into protein, fibre and iron lost'];
 
   return <>
-    <Pill>{tray.day} lunch · {tray.theme}</Pill>
-    <div className={`vf ${phase}` + (phase === 'ask' || phase === 'thanks' ? ' compact' : '')}>
+    {phase === 'idle' && <Hint who="🎥 You are the canteen camera">When a pupil returns their tray, the AI looks at it and works out what was really eaten. Pick a tray, then tap <b>Scan</b>.</Hint>}
+    <div className={`vf ${phase}`}>
       <span className="corner tl" /><span className="corner tr" /><span className="corner bl" /><span className="corner br" />
+      <span className="vf-ai">✦ AI vision</span>
       <div className="vf-tray">
         <div className="tray-empty"><TrayArt items={tray.items} empty /></div>
         {phase !== 'idle' && <div className="tray-food"><TrayArt items={tray.items} /></div>}
         {phase === 'scanning' && <>
           <div className="scanline" />
           {tray.items.map((it, i) => { const b = { main: [7, 11, 47, 49], side: [57, 11, 36, 33], bread: [57, 49, 17, 39], fruit: [76, 49, 17, 39] }[DISHES[it.dish].slot]!;
-            return <div key={it.dish} className="detect" style={{ left: `${b[0]}%`, top: `${b[1]}%`, width: `${b[2]}%`, height: `${b[3]}%`, animationDelay: `${600 + i * 320}ms` }}><span>{DISHES[it.dish].name}</span></div>; })}
+            return <div key={it.dish} className="detect" style={{ left: `${b[0]}%`, top: `${b[1]}%`, width: `${b[2]}%`, height: `${b[3]}%`, animationDelay: `${600 + i * 320}ms` }}><span>{DISHES[it.dish].name} · {88 + ((i * 3) % 10)}%</span></div>; })}
         </>}
       </div>
       <div className="vf-foot"><span><i style={{ background: status[2] }} className={phase === 'scanning' ? 'pulse' : ''} />{status[0]}</span><span>{status[1]}</span></div>
     </div>
 
     {phase === 'idle' && <div className="enter">
-      <h2 className="h-big">Drop your tray,<br />we scan it.</h2>
-      <p className="muted">The camera sees food only, never faces. It estimates how much of each dish was eaten.</p>
-      <div className="label">Pick a demo tray</div>
+      <div className="label">1. Pick a tray</div>
       <div className="tray-pick">{TRAYS.map(t => <button key={t.id} className={'tp' + (t.id === c.trayId ? ' on' : '')} onClick={() => { buzz(6); c.setTrayId(t.id); }}>
         <DishArt art={DISHES[t.items[0].dish].art} size={44} /><b>{t.short}</b><span>{DISHES[t.items[0].dish].short}</span></button>)}</div>
-      <button className="btn primary" onClick={start}>Scan a demo tray</button>
+      <div className="label">2. Scan it</div>
+      <button className="btn primary" onClick={start}>✦ Scan this tray with AI</button>
+      <p className="tiny center">Food only, never faces.</p>
     </div>}
 
     {phase === 'scanning' && <div className="enter">
-      <h2 className="h-big">Analysing…</h2>
+      <h2 className="h-big">AI is analysing…</h2>
       <div className="progress"><i /></div>
-      <p className="muted">Estimating each dish, then protein, fibre and iron.</p>
       <ul className="substeps">{subs.map((s, i) => <li key={s} className={i < sub ? 'done' : i === sub ? 'now' : ''}><span className="tick">{i < sub ? <IconCheck /> : null}</span>{s}</li>)}</ul>
     </div>}
 
     {phase === 'results' && <div className="enter">
+      <h2 className="h-mid">What was eaten</h2>
       <div className="card results">
-        <div className="card-meta"><span>AI estimate · {tray.items.length} dishes found</span><span>94% confidence</span></div>
+        <div className="card-meta"><Ai>AI estimate · {tray.items.length} dishes found</Ai><span>94% confidence</span></div>
         {tray.items.map((it, i) => <div className="dish-row" key={it.dish}>
-          <div className="row-top"><span>{DISHES[it.dish].name}</span><b>{it.eaten}% eaten</b></div>
+          <div className="row-top"><span>{EMOJI[it.dish]} {DISHES[it.dish].name}</span><b>{it.eaten}% eaten</b></div>
           <Bar pct={it.eaten} color={eatenColor(it.eaten)} delay={i * 120} />
         </div>)}
       </div>
-      <div className="label">Left on this tray</div>
+      <h2 className="h-mid">Nutrients this pupil missed</h2>
       <div className="nutri3">
         <div className="nt" style={{ background: 'var(--pink)' }}><b><Count value={left.protein} dec={1} /> g</b><span>protein</span></div>
         <div className="nt" style={{ background: 'var(--mint)' }}><b><Count value={left.fibre} dec={1} /> g</b><span>fibre</span></div>
         <div className="nt" style={{ background: 'var(--blue-soft)' }}><b><Count value={left.iron} dec={1} /> mg</b><span>iron</span></div>
       </div>
       {needsWhy ? <>
-        <p className="note">Most of the <b>{mainDish.short}</b> came back: {fmt(mainDish.protein * (100 - main.eaten) / 100)} g of protein this pupil didn't get.</p>
-        <button className="btn primary" onClick={() => { buzz(); setPhase('ask'); c.scrollTop(); }}>Ask the pupil why <IconArrow /></button>
+        <div className="ai-note"><Ai /> {100 - main.eaten}% of the <b>{mainDish.short}</b> came back. The AI flags it and asks the pupil why.</div>
+        <Next label={`Ask the pupil about the ${mainDish.short}`} onClick={() => { c.setFb({ dish: main.dish, stage: 'mood' }); c.go('feedback'); }} />
       </> : <>
-        <div className="clean"><span>🎉</span><div><b>Clean tray!</b><p>Almost everything was eaten. No question needed.</p></div></div>
+        <div className="clean"><span>🎉</span><div><b>Clean tray!</b><p>Almost everything was eaten. Nothing to flag.</p></div></div>
+        <Next label="Hear from the pupils" onClick={() => c.go('feedback')} />
       </>}
       <button className="btn ghost" onClick={() => { setPhase('idle'); c.scrollTop(); }}>Scan another tray</button>
     </div>}
+  </>;
+}
 
-    {phase === 'ask' && <div className="enter">
-      <h2 className="h-big">Why did you leave the {mainDish.short}?</h2>
-      <p className="muted">One tap. It goes to the kitchen, not to your teacher.</p>
-      <div className="reasons">{REASON_ORDER.map(k => <button key={k} className={'reason' + (picked === k ? ' picked' : picked ? ' dim' : '')} style={{ background: REASONS[k].tile }} onClick={() => vote(k)}>
-        <span className="emoji">{REASONS[k].emoji}</span><span>{REASONS[k].label}</span>{picked === k && <span className="chk"><IconCheck /></span>}</button>)}</div>
-      <p className="tiny center">Anonymous · no name, no photo of the pupil</p>
+/* ---------------- 2 · Pupil feedback ---------------- */
+const MOODS: [Mood, string, string, string][] = [['loved', '😋', 'Loved it', 'var(--mint)'], ['ok', '😐', 'It was OK', 'var(--yellow-soft)'], ['disliked', '😖', "Didn't like it", 'var(--pink)']];
+function FeedbackScreen({ c }: { c: Ctx }) {
+  const tray = TRAYS.find(t => t.id === c.trayId)!;
+  const { fb, setFb } = c;
+  const dish = fb.dish ? DISHES[fb.dish] : null;
+  const classCount = CLASS_WEEK_BASE + c.saved.votes.length + c.saved.loves;
+  const pickMood = (m: Mood) => {
+    buzz(15);
+    if (m === 'loved') { c.update(s => ({ ...s, loves: s.loves + 1, steps: { ...s.steps, why: true } })); setFb({ ...fb, mood: m, stage: 'thanks' }); c.setConfetti(n => n + 1); }
+    else setFb({ ...fb, mood: m, stage: 'reason' });
+    c.scrollTop();
+  };
+  const pickReason = (r: ReasonId) => {
+    if (fb.reason) return;
+    buzz(25); setFb({ ...fb, reason: r });
+    c.update(s => ({ ...s, votes: [...s.votes, { dish: fb.dish!, reason: r }], steps: { ...s.steps, why: true } }));
+    setTimeout(() => { setFb({ ...fb, reason: r, stage: 'thanks' }); c.setConfetti(n => n + 1); c.scrollTop(); }, 520);
+  };
+  const DishChip = () => dish && <button className="dish-chip" onClick={() => setFb({ dish: null, stage: 'dish' })}><span>{EMOJI[dish.id]}</span>{dish.name}<small>change</small></button>;
+
+  return <>
+    {fb.stage !== 'thanks' && <Hint who="🧒 You are a pupil">Three taps, no name. Your answer goes to the kitchen, not to your teacher.</Hint>}
+    {fb.stage === 'dish' && <div className="enter">
+      <h2 className="h-big">What did you eat today?</h2>
+      <p className="muted">{tray.day} lunch · {tray.theme}</p>
+      <div className="dish-grid">{tray.items.map(it => <button key={it.dish} className="dish-pick" onClick={() => { buzz(8); setFb({ dish: it.dish, stage: 'mood' }); }}>
+        <span className="emoji">{EMOJI[it.dish]}</span><b>{DISHES[it.dish].name}</b></button>)}</div>
     </div>}
 
-    {phase === 'thanks' && <div className="enter center">
+    {fb.stage === 'mood' && dish && <div className="enter">
+      <DishChip />
+      <h2 className="h-big">How was the {dish.short}?</h2>
+      <div className="moods">{MOODS.map(([m, e, l, bg]) => <button key={m} className="mood" style={{ background: bg }} onClick={() => pickMood(m)}><span className="emoji">{e}</span><b>{l}</b></button>)}</div>
+    </div>}
+
+    {fb.stage === 'reason' && dish && <div className="enter">
+      <DishChip />
+      <h2 className="h-big">Why didn't you finish it?</h2>
+      <p className="muted">Pick the main reason.</p>
+      <div className="reasons">{REASON_ORDER.map(k => <button key={k} className={'reason' + (fb.reason === k ? ' picked' : fb.reason ? ' dim' : '')} style={{ background: REASONS[k].tile }} onClick={() => pickReason(k)}>
+        <span className="emoji">{REASONS[k].emoji}</span><span>{REASONS[k].label}</span>{fb.reason === k && <span className="chk"><IconCheck /></span>}</button>)}</div>
+    </div>}
+
+    {fb.stage === 'thanks' && dish && <div className="enter center">
       <div className="plus1">+1</div>
       <h2 className="h-big center">Thanks! The kitchen<br />will see it.</h2>
-      <div className="classcard"><span>Class 4A this week</span><b><Count value={classCount} from={classCount - 1} /></b></div>
-      {picked && <p className="muted">You said <b>{REASONS[picked].emoji} {REASONS[picked].label}</b>. It now counts in {answers(main.dish, c.saved.votes)[picked] + REASON_ORDER.filter(k => k !== picked).reduce((a, k) => a + answers(main.dish, c.saved.votes)[k], 0)} answers on {mainDish.short}.</p>}
-      <button className="btn primary" onClick={() => { c.setDetail(main.dish); c.go('insights'); }}>See what the kitchen sees <IconArrow /></button>
-      <button className="btn ghost" onClick={() => { setPhase('idle'); c.scrollTop(); }}>Scan another tray</button>
+      <div className="classcard"><span>Answers from Class 4A this week</span><b><Count value={classCount} from={classCount - 1} /></b></div>
+      <p className="muted">You said: <b>{EMOJI[dish.id]} {dish.name}</b> · {fb.mood === 'loved' ? '😋 Loved it' : `${REASONS[fb.reason!].emoji} ${REASONS[fb.reason!].label}`}</p>
+      <Next label="See what the kitchen sees" onClick={() => { if (FIXABLE.includes(dish.id) && fb.mood !== 'loved') c.setDetail(dish.id); c.go('insights'); }} />
+      <button className="btn ghost" onClick={() => setFb({ dish: null, stage: 'dish' })}>Rate another dish</button>
     </div>}
   </>;
 }
@@ -222,7 +271,14 @@ function InsightsScreen({ c }: { c: Ctx }) {
   const allTotal = REASON_ORDER.reduce((a, k) => a + all[k], 0);
   const ranked = [...days].sort((a, b) => b.left - a.left);
 
+  const worst = ranked[0], wd = DISHES[worst.dish], wc = answers(worst.dish, c.saved.votes);
+  const top2 = [...REASON_ORDER].sort((a, b) => wc[b] - wc[a]).slice(0, 2);
+  const wt = REASON_ORDER.reduce((a, k) => a + wc[k], 0);
+  const summary = `${wd.name} is your biggest problem: ${worst.left}% comes back, losing ${fmt(lossKg(wd.protein, worst.left))} kg of protein every ${worst.day}. Pupils say ${REASONS[top2[0]].label.toLowerCase()} (${Math.round(wc[top2[0]] / wt * 100)}%) and ${REASONS[top2[1]].label.toLowerCase()} (${Math.round(wc[top2[1]] / wt * 100)}%). I suggest reformulating it.`;
   return <>
+    <Hint who="👩‍🍳 You are the caterer's nutritionist">Every week you get this report: what pupils ate, what came back, and why.</Hint>
+    <div className="card ai-sum"><div className="ai-h"><Ai>AI summary of the week</Ai></div><Typed text={summary} />
+      <button className="btn primary small" onClick={() => { c.setRecipeDish(worst.dish); c.go('recipes'); }}>✦ Fix the {wd.short} with AI</button></div>
     <Pill dot="var(--sky)">{WEEK.label} · {PUPILS} pupils/day</Pill>
     <div className="tiles">
       <div className="tile" style={{ background: 'var(--blue-soft)' }}><b><Count value={PUPILS * 5} dec={0} /></b><span>meals served</span></div>
@@ -259,8 +315,15 @@ function InsightsScreen({ c }: { c: Ctx }) {
       <div><b>{fmt((waste * 1000) / (PUPILS * 5), 0)} g</b><span>per pupil per day</span></div>
       <div><b>100%</b><span>of trays scanned ({(PUPILS * 5).toLocaleString('en-GB')})</span></div>
     </div>
+    <Next label={`Let the AI fix the ${wd.short}`} onClick={() => { c.setRecipeDish(worst.dish); c.go('recipes'); }} />
     <p className="tiny center">Illustrative demo data for one Madrid school.</p>
   </>;
+}
+
+function Typed({ text }: { text: string }) {
+  const [n, setN] = useState(0);
+  useEffect(() => { setN(0); const id = setInterval(() => setN(v => { if (v >= text.length) { clearInterval(id); return v; } return v + 2; }), 18); return () => clearInterval(id); }, [text]);
+  return <p className="typed">{text.slice(0, n)}{n < text.length && <i className="caret" />}</p>;
 }
 
 function Trend() {
@@ -291,7 +354,7 @@ function DishDetail({ c, dish }: { c: Ctx; dish: string }) {
         <div className="nt" style={{ background: 'var(--blue-soft)' }}><b>{fmt(lossKg(x.iron, day.left))} g</b><span>iron</span></div>
       </div>
     </div>
-    <button className="btn primary" onClick={() => { c.setRecipeDish(dish); c.setDetail(null); c.go('recipes'); }}>Fix this recipe</button>
+    <button className="btn primary" onClick={() => { c.setRecipeDish(dish); c.setDetail(null); c.go('recipes'); }}>✦ Fix this recipe with AI</button>
   </>;
 }
 
@@ -301,12 +364,14 @@ function RecipesScreen({ c }: { c: Ctx }) {
   const focus = c.focusFor(dish), rec = RECIPES[dish][focus];
   const counts = answers(dish, c.saved.votes), total = REASON_ORDER.reduce((a, k) => a + counts[k], 0);
   const sent = c.saved.sent[dish] === focus;
+  const [think, setThink] = useState(0);
   const verifyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (sent) { setThink(3); return; } setThink(0); const t = [1, 2, 3].map(i => setTimeout(() => setThink(i), i * 550)); return () => t.forEach(clearTimeout); }, [dish, focus]); // eslint-disable-line react-hooks/exhaustive-deps
   const base = 100 - day.left;
   const weeks = VERIFY_RAMP.map(f => Math.round(base + (rec.target - base) * f));
   const send = () => {
     buzz(20); c.update(s => ({ ...s, sent: { ...s.sent, [dish]: focus }, steps: { ...s.steps, verify: true } }));
-    c.showToast('Sent to the kitchen. The camera will check uptake from next week.');
+    c.showToast(`Menu updated: ${rec.name} replaces ${x.short} next ${day.day}.`);
     setTimeout(() => verifyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
   };
   const rows: [string, string, string][] = [
@@ -320,40 +385,61 @@ function RecipesScreen({ c }: { c: Ctx }) {
     ['Share of portion eaten', `${base}%`, `${rec.target}%`],
     ['Protein eaten per pupil', `${fmt(x.protein * base / 100)} g`, `${fmt(rec.protein * rec.target / 100)} g`],
     ['Iron eaten per pupil', `${fmt(x.iron * base / 100)} mg`, `${fmt(rec.iron * rec.target / 100)} mg`],
-    ['Protein lost per lunch', `${fmt(lossKg(x.protein, day.left))} kg`, `${fmt(lossKg(rec.protein, 100 - rec.target))} kg`],
     ['Food wasted per lunch', `${fmt(wasteOld)} kg`, `${fmt(wasteNew)} kg`],
   ];
+  const thinking = ['Reading ' + total + ' pupil answers', `Keeping the same nutrients as the ${x.short}`, 'Checking cost and allergens'];
   return <>
-    <Pill>Suggested for the nutritionist</Pill>
-    <div className="seg">{FIXABLE.map(d => <button key={d} className={d === dish ? 'on' : ''} onClick={() => { buzz(6); c.setRecipeDish(d); }}>{DISHES[d].short.replace(/^\w/, m => m.toUpperCase())}</button>)}</div>
+    {!sent ? <Hint who="✦ The AI suggests, you decide">The AI reads why pupils leave a dish and proposes a version they will eat, with the same nutrients. Approve it and it goes on next week's menu.</Hint>
+      : <Hint who="✅ Step 5 · Verify">The camera keeps scanning trays to check the new recipe is really eaten.</Hint>}
+    <div className="label">Dish to fix</div>
+    <div className="seg">{FIXABLE.map(d => <button key={d} className={d === dish ? 'on' : ''} onClick={() => { buzz(6); c.setRecipeDish(d); }}>{EMOJI[d]} {({ lentil: 'Lentils', chickpea: 'Chickpeas', hake: 'Hake' } as Record<string, string>)[d]}</button>)}</div>
     <div className="card dishcard" style={{ background: 'var(--pink)' }}>
-      <DishArt art={x.art} /><div><b>{x.name}</b><span>{day.left}% left · {QUOTES[dish][focus]}</span></div>
+      <DishArt art={x.art} /><div><small className="cap">Today</small><b>{x.name}</b><span>{day.left}% comes back · {QUOTES[dish][focus]}</span></div>
     </div>
-    <div className="label">Main complaint · tap to change ({total} answers)</div>
+    <div className="label">Main problem pupils told us <small>(tap to change)</small></div>
     <div className="chips">{REASON_ORDER.map(k => <button key={k} className={'chip' + (k === focus ? ' on' : '')} onClick={() => { buzz(6); c.update(s => ({ ...s, focus: { ...s.focus, [dish]: k } })); }}>
       {REASONS[k].emoji} {REASONS[k].label} <small>{Math.round(counts[k] / total * 100)}%</small></button>)}</div>
-    <div className="becomes"><span>becomes</span></div>
-    <div className="card dishcard proposed" key={dish + focus} style={{ background: 'var(--mint)' }}>
-      <DishArt art={rec.art} /><div><b>{rec.name}</b><span>{rec.note}</span></div>
-    </div>
-    <div className="card ai" key={'ai' + dish + focus}>
-      <div className="ai-h"><span className="spark">✦</span> Why this fix</div>
-      <p>{rec.why}</p>
-      <ol>{rec.steps.map(s => <li key={s}>{s}</li>)}</ol>
-    </div>
-    <div className="card table">
-      <div className="tr th"><span>Per portion</span><span>Now</span><span>Proposed</span></div>
-      {rows.map(r => <div className="tr" key={r[0]}><span>{r[0]}</span><b>{r[1]}</b><b>{r[2]}</b></div>)}
-      <p className="tiny">Allergens to check: {rec.allergens}. Estimates.</p>
-    </div>
-    {sent ? <div className="sentok"><IconCheck /> Sent to the kitchen · verifying uptake</div> : <button className="btn primary" onClick={send}>Send to the kitchen</button>}
+
+    {think < 3 ? <div className="card thinking" key={'t' + dish + focus}>
+      <div className="ai-h"><Ai>AI is reformulating…</Ai></div>
+      <ul className="substeps">{thinking.map((s, i) => <li key={s} className={i < think ? 'done' : i === think ? 'now' : ''}><span className="tick">{i < think ? <IconCheck /> : null}</span>{s}</li>)}</ul>
+      <div className="shimmer" />
+    </div> : <>
+      <div className="becomes"><span>✦ AI suggests</span></div>
+      <div className="card dishcard proposed" key={dish + focus} style={{ background: 'var(--mint)' }}>
+        <DishArt art={rec.art} /><div><small className="cap">New recipe</small><b>{rec.name}</b><span>{rec.note}</span></div>
+      </div>
+      <div className="card ai" key={'ai' + dish + focus}>
+        <div className="ai-h"><span className="spark">✦</span> Why the AI chose this</div>
+        <p>{rec.why}</p>
+        <div className="win">Expected: <b>{base}% → {rec.target}%</b> of each portion eaten</div>
+      </div>
+      <details className="card table">
+        <summary>Nutrition & cost, per portion</summary>
+        <div className="tr th"><span>Per portion</span><span>Now</span><span>New</span></div>
+        {rows.map(r => <div className="tr" key={r[0]}><span>{r[0]}</span><b>{r[1]}</b><b>{r[2]}</b></div>)}
+        <ol className="steps-ol">{rec.steps.map(st => <li key={st}>{st}</li>)}</ol>
+        <p className="tiny">Allergens to check: {rec.allergens}. Estimates.</p>
+      </details>
+      {!sent && <button className="btn primary" onClick={send}>✓ Approve & update the menu</button>}
+    </>}
 
     {sent && <div ref={verifyRef} className="enter">
+      <div className="card flow">
+        <h3>Where the update goes</h3>
+        {[['✦', 'AI suggested the new recipe', true], ['👩‍🍳', 'Nutritionist approved it', true], ['📅', `Added to the menu for next ${day.day}`, true], ['🎥', 'Camera checks if pupils eat it', false]].map(([e, t, ok], i) =>
+          <div key={i} className={'fl' + (ok ? ' ok' : ' live')}><span className="fe">{e as string}</span><span>{t as string}</span>{ok ? <IconCheck /> : <i className="pulse-dot" />}</div>)}
+      </div>
+      <div className="card menu">
+        <h3>📅 Kitchen menu · next {day.day}</h3>
+        <div className="mrow old"><span>{EMOJI[dish]}</span>{x.name}</div>
+        <div className="mrow new"><span>✦</span>{rec.name}<em>NEW</em></div>
+      </div>
       <div className="card verify">
         <h3>Verify: share eaten, 4-week pilot</h3>
         <div className="vchart">
           <div className="vaxis"><span>100%</span><span>50%</span><span>0%</span></div>
-          <div className="vbars">{weeks.map((v, i) => <div key={i} className="vcol"><div className="vplot"><div className="vbar" style={{ height: `${v}%`, background: i === 0 ? 'var(--coral)' : 'var(--green)', animationDelay: `${i * 140}ms` }}><b>{v}%</b></div></div><span>Wk {i + 1}<br />{i === 0 ? x.short.split(' ').slice(-1)[0] : 'new'}</span></div>)}</div>
+          <div className="vbars">{weeks.map((v, i) => <div key={i} className="vcol"><div className="vplot"><div className="vbar" style={{ height: `${v}%`, background: i === 0 ? 'var(--coral)' : 'var(--green)', animationDelay: `${i * 140}ms` }}><b>{v}%</b></div></div><span>Wk {i + 1}<br />{i === 0 ? 'old' : 'new'}</span></div>)}</div>
         </div>
         <p className="tiny">Simulation. Weeks 2–4 are targets, not measurements.</p>
       </div>
@@ -363,8 +449,9 @@ function RecipesScreen({ c }: { c: Ctx }) {
         <div className="delta"><b>−{Math.round((1 - wasteNew / wasteOld) * 100)}%</b> food waste · <b>+{Math.round(((rec.protein * rec.target) / (x.protein * base) - 1) * 100)}%</b> protein actually eaten</div>
         <span className="demo-tag">Demonstration data</span>
       </div>
+      <div className="done-card"><b>🎉 That's the full loop.</b><span>Scan → Feedback → Insights → AI fix → Verify</span>
+        <button className="btn ghost" onClick={() => c.go('scan')}>Start again with another tray</button></div>
     </div>}
-    {!sent && <p className="tiny center">Send it to see the 4-week verification.</p>}
   </>;
 }
 
@@ -379,7 +466,7 @@ function Sheet({ c, close, reset }: { c: Ctx; close: () => void; reset: () => vo
   const items: [string, string, boolean, () => void][] = [
     ['Scan a returned tray', 'AI camera at the tray return', !!st.scan, () => { c.go('scan'); close(); }],
     ['See the nutrients lost', 'Protein, fibre and iron left behind', !!st.losses, () => { c.go('scan'); close(); }],
-    ['Tell the kitchen why', 'Anonymous, one tap', !!st.why, () => { c.go('scan'); close(); }],
+    ['Pupils say why', 'Anonymous, three taps', !!st.why, () => { c.go('feedback'); close(); }],
     ['Get a recipe fix', 'AI reformulation for the nutritionist', !!st.recipe, () => { c.go('recipes'); close(); }],
     ['Verify it works', 'Before vs after, 4-week pilot', !!st.verify, () => { c.go('recipes'); close(); }],
   ];
@@ -399,18 +486,18 @@ function Sheet({ c, close, reset }: { c: Ctx; close: () => void; reset: () => vo
 }
 
 /* ---------------- desktop stage ---------------- */
-function caption(tab: Tab, phase: Phase, detail: string | null, saved: Saved, recipeDish: string, focusFor: (d: string) => ReasonId): [string, string, string] {
+function caption(tab: Tab, phase: Phase, detail: string | null, saved: Saved, recipeDish: string, focusFor: (d: string) => ReasonId, fb: Fb): [string, string, string] {
   if (tab === 'scan') {
     if (phase === 'idle') return saved.steps.scan ? ['1 · Measure', 'A camera at the tray return scans every tray.', 'Food only, never faces.'] : ['', 'Every tray tells the kitchen what children actually ate.', 'Prototype · illustrative demo data for one Madrid school'];
-    if (phase === 'scanning' || phase === 'results') return ['1 · Measure', 'It sees what was eaten, and the nutrients left behind.', 'Protein, fibre and iron, per tray.'];
-    return ['2 · Understand why', 'Pupils give the reason in one tap.', 'During short “why weeks”.'];
+    return ['1 · Measure', 'AI sees what was eaten, and the nutrients left behind.', 'Protein, fibre and iron, per tray.'];
   }
+  if (tab === 'feedback') return ['2 · Understand why', fb.stage === 'thanks' ? 'Every answer reaches the kitchen.' : 'Pupils say why in three taps.', 'Anonymous. During short “why weeks”.'];
   if (tab === 'insights') {
     if (detail) { const x = DISHES[detail], day = WEEK.days.find(w => w.dish === detail)!; return ['3 · Report', `${x.name}: ${day.left}% comes back.`, `${fmt(lossKg(x.protein, day.left))} kg of protein lost in one lunch, in one school.`]; }
-    return ['3 · Report', 'The caterer’s nutritionist sees the whole week.', 'Which dishes come back, and the nutrition lost.'];
+    return ['3 · Report', 'The caterer’s nutritionist sees the whole week.', 'With an AI summary of what to fix first.'];
   }
-  if (saved.sent[recipeDish] === focusFor(recipeDish)) { const base = 100 - WEEK.days.find(w => w.dish === recipeDish)!.left; return ['5 · Verify', 'The camera checks: is it eaten now?', `Pilot target: from ${base}% to ${RECIPES[recipeDish][focusFor(recipeDish)].target}% eaten (simulation).`]; }
-  return ['4 · Reformulate', 'Same nutrients, a form children eat.', 'Same ingredients, almost the same cost.'];
+  if (saved.sent[recipeDish] === focusFor(recipeDish)) { const base = 100 - WEEK.days.find(w => w.dish === recipeDish)!.left; return ['5 · Verify', 'The menu is updated. The camera checks: is it eaten now?', `Pilot target: from ${base}% to ${RECIPES[recipeDish][focusFor(recipeDish)].target}% eaten (simulation).`]; }
+  return ['4 · Reformulate', 'AI proposes a recipe children will eat.', 'Same nutrients, almost the same cost.'];
 }
 
 function Stage({ children, caption: [tag, head, sub] }: { children: ReactNode; caption: [string, string, string] }) {
