@@ -484,7 +484,7 @@ function Sheet({ c, close, reset }: { c: Ctx; close: () => void; reset: () => vo
       <div className="label">Your demo · {done}/5 done</div>
       <div className="steps">{items.map(([t, s, ok, fn], i) => <button key={t} className={'stp' + (ok ? ' ok' : '')} onClick={fn}><span className="num">{ok ? <IconCheck /> : i + 1}</span><span><b>{t}</b><small>{s}</small></span></button>)}</div>
       <button className="btn ghost" onClick={reset}>Restart the demo</button>
-      <p className="tiny center">Prototype for the IE University Challenge · illustrative demo data for one Madrid school. No personal data is collected.</p>
+      <p className="tiny center">Interactive demo for the IE University Challenge · illustrative demo data for one Madrid school. No personal data is collected.</p>
     </div>
   </div>;
 }
@@ -492,7 +492,7 @@ function Sheet({ c, close, reset }: { c: Ctx; close: () => void; reset: () => vo
 /* ---------------- desktop stage ---------------- */
 function caption(tab: Tab, phase: Phase, detail: string | null, saved: Saved, recipeDish: string, focusFor: (d: string) => ReasonId, fb: Fb): [string, string, string] {
   if (tab === 'scan') {
-    if (phase === 'idle') return saved.steps.scan ? ['1 · Measure', 'A camera at the tray return scans every tray.', 'Food only, never faces.'] : ['', 'Every tray tells the kitchen what children actually ate.', 'Prototype · illustrative demo data for one Madrid school'];
+    if (phase === 'idle') return saved.steps.scan ? ['1 · Measure', 'A camera at the tray return scans every tray.', 'Food only, never faces.'] : ['', 'Every tray tells the kitchen what children actually ate.', 'Interactive demo · illustrative data for one Madrid school'];
     return ['1 · Measure', 'AI sees what was eaten, and the nutrients left behind.', 'Protein, fibre and iron, per tray.'];
   }
   if (tab === 'feedback') return ['2 · Understand why', fb.stage === 'thanks' ? 'Every answer reaches the kitchen.' : 'Pupils say why in three taps.', 'Anonymous. During short “why weeks”.'];
